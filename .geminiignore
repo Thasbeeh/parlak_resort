@@ -1,0 +1,14 @@
+# Environment variables & secrets
+.env*
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Certificates and sensitive keys
+*.pem
+*.key
+*.cert
+certs/
+secrets/

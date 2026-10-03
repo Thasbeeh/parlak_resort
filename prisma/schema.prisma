@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL_POOLED")
+  directUrl = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Unit {
+  id           String         @id @default(uuid())
+  name         String
+  category     String         // "Dome", "A-Frame", "Event Hall"
+  isActive     Boolean        @default(true)
+  maxCapacity  Int
+  amenities    String         // JSON or comma separated
+  defaultDeposit Float
+  baseRate     Float
+  bookingUnits BookingUnit[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Booking {
+  id           String         @id @default(uuid())
+  bookingId    String         @unique // e.g. #B001
+  guestName    String
+  guestPhone   String
+  guestEmail   String?
+  notes        String?
+  
+  // Financial Tracking
+  totalPaid    Float          @default(0) // Total cash/UPI collected
+  netRevenue   Float          // Retained revenue: (totalPaid - refundAmount)
+  
+  // Status: CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED
+  status       String         @default("CONFIRMED")
+  
+  // Cancellation & Refund (strictly for cancellations)
+  refundAmount Float?         @default(0) // Custom refund (0 <= refundAmount <= totalPaid)
+  cancelReason String?        // Reason for cancellation / refund deduction
+
+  units        BookingUnit[]
+  lineItems    LineItem[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model BookingUnit {
+  id            String   @id @default(uuid())
+  bookingId     String
+  unitId        String
+  startDatetime DateTime
+  endDatetime   DateTime
+  status        String   // "CONFIRMED", "CANCELLED"
+  unitPrice     Float
+  
+  // Dynamic Configuration & Hall Context
+  deposit       Float?   @default(0) // Dynamic deposit assigned to this specific unit
+  headcount     Int?     // Event attendee count (for Event Halls)
+  slot          String?  // "SLOT_A", "SLOT_B", "FULL_DAY" (for Event Halls)
+  
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  unit          Unit     @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@index([startDatetime, endDatetime])
+}
+
+model LineItem {
+  id          String   @id @default(uuid())
+  bookingId   String
+  description String
+  amount      Float
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Slab {
+  id              String   @id @default(uuid())
+  name            String
+  minHeadcount    Int
+  maxHeadcount    Int
+  rate            Float
+  requiredDeposit Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   // JSON stringified value
+  updatedAt DateTime @updatedAt
+}
