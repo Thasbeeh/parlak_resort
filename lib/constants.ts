@@ -57,9 +57,8 @@ export const RESORT_POLICIES = {
       checkOut: "3:00 PM IST Same Day",
     },
     eventHallSlots: {
-      slotA: "10:00 AM – 3:00 PM IST",
-      slotB: "5:00 PM – 10:00 PM IST",
-      fullDay: "10:00 AM – 10:00 PM IST",
+      morningSlot: "10:00 AM – 3:00 PM IST",
+      eveningSlot: "5:00 PM – 10:00 PM IST",
     },
     dining: {
       menuAvailableUntil: "10:30 PM IST",
@@ -70,9 +69,13 @@ export const RESORT_POLICIES = {
       eventAttendeesRule: "Event Hall attendees are strictly forbidden from using the swimming pool under any circumstances.",
     },
   },
+  bookingAdvance: {
+    defaultRoomAdvanceSeed: 2000, // Seed default; dynamically configured by Admin per Price List slab
+    advanceRule: "The booking advance is dynamically configured by the Admin per Price List slab, collected at booking confirmation and credited directly towards the total rent (non-refundable; no security deposits collected).",
+  },
   deposits: {
-    roomRefundableDeposit: 2000, // ₹2,000 refundable security deposit per room unit
-    depositRule: "₹2,000 refundable security deposit per room unit collected at booking confirmation and refunded at check-out upon inspection.",
+    defaultRoomDepositSeed: 2000, // Alias for bookingAdvance
+    depositRule: "The booking advance is dynamically configured by the Admin per Price List slab, collected at booking confirmation and credited directly towards the total rent (non-refundable; no security deposits collected).",
   },
   capacities: {
     dome: {
@@ -92,8 +95,8 @@ export const RESORT_POLICIES = {
     },
     acHall: {
       maxCapacity: 2000,
-      active: false,
-      statusBadge: "Under Construction",
+      active: true,
+      statusBadge: "Active Venue",
     },
   },
 } as const;

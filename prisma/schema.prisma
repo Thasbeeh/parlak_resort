@@ -1,11 +1,11 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+generator client {
+  provider = "prisma-client-js"
 }
 
 model Admin {
@@ -16,87 +16,195 @@ model Admin {
   updatedAt DateTime @updatedAt
 }
 
+// ----------------------------------------------------
+// UNITS & INVENTORY
+// ----------------------------------------------------
+
 model Unit {
-  id           String         @id @default(uuid())
-  name         String
-  category     String         // "Dome", "A-Frame", "Event Hall"
-  isActive     Boolean        @default(true)
-  maxCapacity  Int
-  amenities    String         // JSON or comma separated
-  defaultDeposit Float
-  baseRate     Float
+  id          String  @id @default(uuid())
+  name        String // e.g. "Dome 1", "A-Frame 2", "Non-AC Event Hall"
+  category    String // "DOME", "A_FRAME", "NON_AC_HALL", "AC_HALL"
+  isActive    Boolean @default(true)
+  maxCapacity Int // Max adults / pax
+  maxInfants  Int     @default(0) // Separate infant cap
+  amenities   String // Comma-separated or JSON string of variable amenities
+
+  // Mandatory Price List Attachment
+  priceListId String
+  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+
+  photos       UnitPhoto[]
   bookingUnits BookingUnit[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
-model Booking {
-  id           String         @id @default(uuid())
-  bookingId    String         @unique // e.g. #B001
-  guestName    String
-  guestPhone   String
-  guestEmail   String?
-  notes        String?
-  
-  // Financial Tracking
-  totalPaid    Float          @default(0) // Total cash/UPI collected
-  netRevenue   Float          // Retained revenue: (totalPaid - refundAmount)
-  
-  // Status: CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED
-  status       String         @default("CONFIRMED")
-  
-  // Cancellation & Refund (strictly for cancellations)
-  refundAmount Float?         @default(0) // Custom refund (0 <= refundAmount <= totalPaid)
-  cancelReason String?        // Reason for cancellation / refund deduction
+model UnitPhoto {
+  id          String   @id @default(uuid())
+  unitId      String
+  url         String
+  caption     String?
+  altText     String?
+  description String?
+  orderIndex  Int      @default(0)
+  isFeatured  Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
-  units        BookingUnit[]
-  lineItems    LineItem[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@index([unitId])
+}
+
+// ----------------------------------------------------
+// PRICING ENGINE (Price Lists, Slabs & Modifiers)
+// ----------------------------------------------------
+
+model PriceList {
+  id               String @id @default(uuid())
+  name             String // "Standard Dome - 2 Pax Plan"
+  slug             String @unique // "standard-dome-2-pax-plan"
+  unitType         String // "DOME", "A_FRAME", "NON_AC_HALL", "AC_HALL"
+  maxGuestCapacity Int
+
+  units     Unit[]
+  slabs     PriceSlab[]
+  modifiers PriceModifier[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model PriceSlab {
+  id              String   @id @default(uuid())
+  priceListId     String
+  stayType        String // "OVERNIGHT", "DAY_SLOT", "MORNING_SLOT", "EVENING_SLOT"
+  minHeadcount    Int
+  maxHeadcount    Int
+  basePrice       Float
+  requiredDeposit Float
+  createdAt       DateTime @default(now())
+
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+
+  @@unique([priceListId, stayType, minHeadcount])
+  @@index([priceListId, stayType])
+}
+
+model PriceModifier {
+  id          String   @id @default(uuid())
+  priceListId String
+  name        String // e.g. "Diwali Surge", "Weekend Rate"
+  type        String // "WEEKEND" or "SEASONAL"
+  percentage  Float // e.g. 15.0 (+15%) or -10.0 (-10%)
+  startDate   DateTime @db.Timestamptz(3) // Explicit date range required for all modifiers
+  endDate     DateTime @db.Timestamptz(3) // Explicit date range (endDate >= startDate)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+
+  @@index([priceListId])
+}
+
+// ----------------------------------------------------
+// BOOKINGS & RESERVATIONS
+// ----------------------------------------------------
+
+model Booking {
+  id        String @id @default(uuid())
+  bookingId String @unique // e.g. #B001
+
+  // Flat CRM Fields
+  guestName  String
+  guestPhone String
+  guestEmail String?
+  notes      String?
+
+  // Financial Tracking
+  rentCharge Float @default(0) // Strictly unit rent (SUM'd for 30-day revenue analytics)
+  totalPaid  Float @default(0) // Total advance + final collected
+  netRevenue Float @default(0) // Automatically maintained by PostgreSQL trigger (totalPaid - COALESCE(refundAmount, 0))
+
+  // Status: CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED
+  status String @default("CONFIRMED")
+
+  // Extra charges strictly for receipt generation (stored as JSONB)
+  receiptLineItems Json? // [{ description: "BBQ Setup", amount: 1200 }]
+
+  // Cancellation & Refund
+  refundAmount Float?  @default(0)
+  cancelReason String?
+
+  // Hall ↔ Dome Bundling (Cascading Release)
+  parentBookingId String?
+  parentBooking   Booking?  @relation("BookingBundles", fields: [parentBookingId], references: [id], onDelete: Cascade)
+  bundledBookings Booking[] @relation("BookingBundles")
+
+  units     BookingUnit[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([parentBookingId])
+  @@index([status])
+  @@index([guestPhone])
+  @@index([createdAt])
 }
 
 model BookingUnit {
   id            String   @id @default(uuid())
-  bookingId     String
+  bookingId     String? // Optional to allow standalone maintenance blocks without dummy guest bookings
   unitId        String
-  startDatetime DateTime
-  endDatetime   DateTime
-  status        String   // "CONFIRMED", "CANCELLED"
-  unitPrice     Float
-  
-  // Dynamic Configuration & Hall Context
-  deposit       Float?   @default(0) // Dynamic deposit assigned to this specific unit
-  headcount     Int?     // Event attendee count (for Event Halls)
-  slot          String?  // "SLOT_A", "SLOT_B", "FULL_DAY" (for Event Halls)
-  
-  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  unit          Unit     @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  startDatetime DateTime @db.Timestamptz(3) // Stored with timezone for tstzrange GiST constraint
+  endDatetime   DateTime @db.Timestamptz(3) // Stored with timezone for tstzrange GiST constraint
+  status        String   @default("CONFIRMED") // "CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED", "MAINTENANCE_BLOCKED"
+  unitPrice     Float    @default(0) // Rent contribution for this unit (guarded by chk_booking_unit_price >= 0)
+  deposit       Float?   @default(0)
+  notes         String? // Operational notes or maintenance blocking reason
 
-  @@index([startDatetime, endDatetime])
-}
+  // Baseline Scope Preservation & Recalculation Snapshots
+  bookedBaseRate     Float? // Financial snapshot of original base rate (locks baseline tariff)
+  bookedMinHeadcount Int? // Original headcount slab floor (for Hall upgrades)
+  bookedMaxHeadcount Int? // Original headcount slab ceiling (for Hall upgrades)
 
-model LineItem {
-  id          String   @id @default(uuid())
-  bookingId   String
-  description String
-  amount      Float
-  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-}
-
-model Slab {
-  id              String   @id @default(uuid())
-  name            String
-  minHeadcount    Int
-  maxHeadcount    Int
-  rate            Float
-  requiredDeposit Float
+  // Occupancy & Operational Context
+  stayType        String // "OVERNIGHT", "DAY_SLOT", "MORNING_SLOT", "EVENING_SLOT"
+  headcount       Int? // Total event attendees (for Halls)
+  adults          Int? // Adults checked in (for Domes/A-Frames)
+  infants         Int? // Infants checked in (for Domes/A-Frames)
+  isComplimentary Boolean  @default(false) // e.g. complimentary attached dome
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  unit    Unit     @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId])
+  @@index([unitId])
+  @@index([status])
+  @@index([startDatetime, endDatetime])
 }
 
 model Setting {
   id        String   @id @default(uuid())
   key       String   @unique
-  value     String   // JSON stringified value
+  value     String // JSON stringified value
   updatedAt DateTime @updatedAt
+}
+
+// ----------------------------------------------------
+// AUDIT LOGS
+// ----------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String // e.g. "CREATE_BOOKING", "UPDATE_PRICE", "CANCEL_BOOKING"
+  entityType String // e.g. "Booking", "PriceList", "Unit"
+  entityId   String // ID of the affected entity
+  modifiedBy String // ID or Username of the Admin who made the change
+  oldValue   Json? // State before the change
+  newValue   Json? // State after the change
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

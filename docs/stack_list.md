@@ -173,8 +173,8 @@ WHERE (status NOT IN ('CANCELLED'));
 │ • Seed 3 Admin credentials & Setup Auth Middleware                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ DAY 2: Admin Panel - Units & Pricing Engine                                 │
-│ • Dynamic Units CRUD (Max capacity, Amenities checkboxes, Deposit setting)  │
-│ • Dynamic Slab Pricing & Required Deposit configuration                     │
+│ • Dynamic Units CRUD (Max capacity, Amenities checkboxes, Advance setting)  │
+│ • Dynamic Slab Pricing & Required Advance configuration                     │
 │ • Seasonal Promotions Engine (Percentage Modifier variance calculation)     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ DAY 3: Admin Panel - Bookings, Concurrency & Invoicing                       │

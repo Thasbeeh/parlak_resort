@@ -6,6 +6,6 @@ ALTER TABLE "BookingUnit"
 ADD CONSTRAINT no_overlapping_unit_bookings
 EXCLUDE USING gist (
   "unitId" WITH =,
-  tsrange("startDatetime", "endDatetime") WITH &&
+  tstzrange("startDatetime", "endDatetime") WITH &&
 )
 WHERE (status NOT IN ('CANCELLED'));
